@@ -80,12 +80,17 @@ async function run() {
     });
 
     app.get("/upazila", async (req, res) => {
-      const upazilaInfo = await upazilaCollection.find().toArray();
+      const upazilaInfo = await upazilaCollection
+        .find()
+        .project({ _id: 0 })
+        .toArray();
       res.send(upazilaInfo);
     });
 
     app.post("/upazila", async (req, res) => {
       const upazilaInfo = req.body;
+      upazilaInfo.fullFieldOfficeCode =
+        upazilaInfo.instituteCode + upazilaInfo.fieldOfficeCode;
       const result = await upazilaCollection.insertOne(upazilaInfo);
       res.send(result);
     });
