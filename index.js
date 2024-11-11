@@ -235,6 +235,7 @@ async function run() {
 
     app.get("/upazilaCodewiseBudget/:upazilaId", async (req, res) => {
       const { upazilaId } = req.params;
+      console.log(upazilaId);
       try {
         const distribution = await upazilaCodewiseBudgetCollection.findOne({ upazilaId });
         if (!distribution) {
