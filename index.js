@@ -311,6 +311,51 @@ async function run() {
       res.send({ message: "Expense added successfully" });
     });
 
+    const upazilaCodewiseBudgetCollection = db.collection(
+      "upazilaCodewiseBudget"
+    );
+
+    // Endpoint to distribute budget data for each upazila
+    app.post("/upazilaCodewiseBudget", async (req, res) => {
+      const { upazilaId, upazilaName, allocations } = req.body;
+
+      try {
+        const distributionData = {
+          upazilaId,
+          upazilaName,
+          allocations,
+          createdAt: new Date(),
+        };
+
+        const result = await upazilaCodewiseBudgetCollection.insertOne(
+          distributionData
+        );
+        res
+          .status(201)
+          .send({ message: "Budget distributed successfully", result });
+      } catch (error) {
+        console.error("Error distributing budget:", error);
+        res
+          .status(500)
+          .send({ error: "Failed to distribute budget. Please try again." });
+      }
+    });
+
+    // Endpoint to retrieve distributed budget data by upazila and economic code
+    app.get("/upazilaCodewiseBudget", async (req, res) => {
+      try {
+        const distributions = await upazilaCodewiseBudgetCollection
+          .find()
+          .toArray();
+        res.send(distributions);
+      } catch (error) {
+        console.error("Error fetching budget data:", error);
+        res.status(500).send({
+          error: "Failed to retrieve budget data. Please try again.",
+        });
+      }
+    });
+
     // Messages Management
     app.post("/messages", async (req, res) => {
       const message = req.body;
