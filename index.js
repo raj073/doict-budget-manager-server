@@ -233,6 +233,21 @@ async function run() {
       }
     });
 
+    app.get("/upazilaCodewiseBudget/:upazilaId", async (req, res) => {
+      const { upazilaId } = req.params;
+      try {
+        const distribution = await upazilaCodewiseBudgetCollection.findOne({ upazilaId });
+        if (!distribution) {
+          return res.status(404).send({ error: "No budget data found for this upazila." });
+        }
+        res.send(distribution);
+      } catch (error) {
+        console.error("Error fetching upazila budget data:", error);
+        res.status(500).send({ error: "Failed to retrieve budget data." });
+      }
+    });
+
+
     // Messages Management
     app.post("/messages", async (req, res) => {
       const message = req.body;
