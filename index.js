@@ -114,8 +114,6 @@ async function run() {
 
     app.post("/upazila", async (req, res) => {
       const upazilaInfo = req.body;
-      upazilaInfo.fullFieldOfficeCode =
-        upazilaInfo.instituteCode + upazilaInfo.fieldOfficeCode;
       const result = await upazilaCollection.insertOne(upazilaInfo);
       res.send(result);
     });
@@ -255,13 +253,6 @@ async function run() {
             duplicates: duplicateCount,
           });
         }
-        // if (duplicateCount === 0) {
-        //   await budgetDistributionCollection.insertMany(nonDuplicateRecords);
-        //   return res.status(200).json({
-        //     message: "CSV File Imported Successfully into Database",
-        //     inserted: nonDuplicateRecords.length,
-        //   });
-        // }
       } catch (err) {
         console.error("Error processing CSV:", err);
         res.status(500).json({ error: "Failed to Process CSV File" });
@@ -360,9 +351,13 @@ async function run() {
       const { upazilaId } = req.params;
       console.log(upazilaId);
       try {
-        const distribution = await upazilaCodewiseBudgetCollection.findOne({ upazilaId });
+        const distribution = await upazilaCodewiseBudgetCollection.findOne({
+          upazilaId,
+        });
         if (!distribution) {
-          return res.status(404).send({ error: "No budget data found for this upazila." });
+          return res
+            .status(404)
+            .send({ error: "No budget data found for this upazila." });
         }
         res.send(distribution);
       } catch (error) {
@@ -370,7 +365,6 @@ async function run() {
         res.status(500).send({ error: "Failed to retrieve budget data." });
       }
     });
-
 
     // Messages Management
     app.post("/messages", async (req, res) => {
