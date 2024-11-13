@@ -93,8 +93,6 @@ async function run() {
 
     app.post("/upazila", async (req, res) => {
       const upazilaInfo = req.body;
-      upazilaInfo.fullFieldOfficeCode =
-        upazilaInfo.instituteCode + upazilaInfo.fieldOfficeCode;
       const result = await upazilaCollection.insertOne(upazilaInfo);
       res.send(result);
     });
