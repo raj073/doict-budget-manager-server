@@ -2,6 +2,10 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const multer = require("multer");
+const csv = require("csvtojson");
+const path = require("path");
+const fs = require("fs");
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -16,6 +20,26 @@ app.use(
   })
 );
 app.use(express.json());
+
+// Multer Excel Upload Middleware
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "./uploads");
+  },
+  filename: (req, file, cb) => {
+    cb(null, file.originalname);
+  },
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (path.extname(file.originalname) !== ".csv") {
+      return cb(new error("Only CSV Files are allowed"));
+    }
+    cb(null, true);
+  },
+});
 
 // MongoDB URI
 const uri = process.env.DB_URI;
@@ -38,6 +62,7 @@ async function run() {
     const upazilaCollection = db.collection("upazila_info");
     const economicCodesCollection = db.collection("economicCodes");
     const budgetDistributionCollection = db.collection("budgetDistributions");
+    const distributedBudgetCollection = db.collection("distributedBudget");
     const messagesCollection = db.collection("messages");
     const upazilaCodewiseBudgetCollection = db.collection(
       "upazilaCodewiseBudget"
@@ -176,56 +201,26 @@ async function run() {
         { $inc: { distributedBudget } }
       );
 
-      // Now update the upazilaCodewiseBudget collection
-      const upazila = await upazilaCodewiseBudgetCollection.findOne({
-        upazilaId,
-      });
+      // Insert distribution record
+      const result = await budgetDistributionCollection.insertOne(req.body);
+      res.send(result);
+    });
 
-      if (upazila) {
-        // If upazila already exists, add the new allocations to the existing allocations
-        const updatedAllocations = upazila.allocations.map((allocation) => {
-          if (allocation.economicCode === economicCode) {
-            allocation.distributed += distributedBudget; // Update the distributed amount
-          }
-          return allocation;
-        });
+    // Expense Management for Users
+    app.get("/expenses/:uid", async (req, res) => {
+      const uid = req.params.uid;
+      const expenses = await budgetDistributionCollection
+        .find({ userId: uid })
+        .toArray();
+      res.send(expenses);
+    });
 
-        // If economicCode does not exist in allocations, add a new entry for it
-        if (
-          !upazila.allocations.some(
-            (allocation) => allocation.economicCode === economicCode
-          )
-        ) {
-          updatedAllocations.push({
-            economicCode,
-            distributed: distributedBudget,
-          });
-        }
+    app.post("/expenses", async (req, res) => {
+      const { uid, economicCode, expenseAmount } = req.body;
 
-        // Update the upazilaCodewiseBudget collection with the updated allocations
-        await upazilaCodewiseBudgetCollection.updateOne(
-          { upazilaId },
-          { $set: { allocations: updatedAllocations } }
-        );
-      } else {
-        // If upazila does not exist, create a new entry for it
-        const newUpazilaData = {
-          upazilaId,
-          upazilaName: req.body.upazilaName, // Ensure this data is coming from the request body
-          allocations: [
-            {
-              economicCode,
-              distributed: distributedBudget,
-            },
-          ],
-          createdAt: new Date(),
-        };
-
-        await upazilaCodewiseBudgetCollection.insertOne(newUpazilaData);
-      }
-
-      // Respond with success message and updated budget information
-      const updatedEconomicCode = await economicCodesCollection.findOne({
+      // Find User's Budget Distribution
+      const distribution = await budgetDistributionCollection.findOne({
+        userId: uid,
         economicCode,
       });
       res.send({
