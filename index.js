@@ -2,6 +2,10 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const multer = require("multer");
+const csv = require("csvtojson");
+const path = require("path");
+const fs = require("fs");
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -16,6 +20,26 @@ app.use(
   })
 );
 app.use(express.json());
+
+// Multer Excel Upload Middleware
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "./uploads");
+  },
+  filename: (req, file, cb) => {
+    cb(null, file.originalname);
+  },
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (path.extname(file.originalname) !== ".csv") {
+      return cb(new error("Only CSV Files are allowed"));
+    }
+    cb(null, true);
+  },
+});
 
 // MongoDB URI
 const uri = process.env.DB_URI;
@@ -38,6 +62,7 @@ async function run() {
     const upazilaCollection = db.collection("upazila_info");
     const economicCodesCollection = db.collection("economicCodes");
     const budgetDistributionCollection = db.collection("budgetDistributions");
+    const distributedBudgetCollection = db.collection("distributedBudget");
     const messagesCollection = db.collection("messages");
     const upazilaCodewiseBudgetCollection = db.collection(
       "upazilaCodewiseBudget"
@@ -176,10 +201,117 @@ async function run() {
         { $inc: { distributedBudget } }
       );
 
+
       // Now update the upazilaCodewiseBudget collection
       const upazila = await upazilaCodewiseBudgetCollection.findOne({
         upazilaId,
       });
+
+      // Insert distribution record
+      const result = await budgetDistributionCollection.insertOne(req.body);
+      res.send(result);
+    });
+
+    // Budget Distribution Upload Excel File
+    app.post("/uploadExcel", upload.single("csvFile"), async (req, res) => {
+      const filePath = req.file.path;
+      const expectedHeaders = [
+        "SL",
+        "SerialCode",
+        "OfficeName",
+        "EntertainmentExpenses",
+        "Internet",
+      ];
+      try {
+        // Convert CSV to JSON using csvtojson
+        const jsonArray = await csv().fromFile(filePath);
+        console.log(jsonArray);
+
+        // Validate CSV headers
+        const csvHeaders = Object.keys(jsonArray[0]);
+        const isValidHeaders = expectedHeaders.every((header) =>
+          csvHeaders.includes(header)
+        );
+
+        if (!isValidHeaders) {
+          // Delete the uploaded file if headers are invalid
+          if (fs.existsSync(filePath)) {
+            fs.unlink(filePath, (err) => {
+              if (err) {
+                console.error("Error deleting file:", err);
+              }
+            });
+          }
+          return res.status(400).json({
+            error:
+              "Invalid CSV file detected. Headers do not match. Please check and re-upload.",
+          });
+        }
+
+        // Check for duplicates in the database
+        const serialCodes = jsonArray.map((sl) => sl.SerialCode);
+        console.log("SerialCode After Map:", serialCodes);
+        const existingRecords = await budgetDistributionCollection
+          .find({
+            SerialCode: { $in: serialCodes },
+          })
+          .toArray();
+        console.log("Existing Records:", existingRecords);
+
+        const existingSerialCodes = new Set(
+          existingRecords.map((record) => record.SerialCode)
+        );
+        console.log("Existing Serial Codes:", existingSerialCodes);
+
+        // //Filter out duplicates
+        const nonDuplicateRecords = jsonArray.filter(
+          (record) => !existingSerialCodes.has(record.SerialCode)
+        );
+
+        console.log(
+          "Non Duplicate Records length:",
+          nonDuplicateRecords.length
+        );
+
+        const duplicateCount = jsonArray.length - nonDuplicateRecords.length;
+        console.log("Duplicate Count:", duplicateCount);
+
+        if (nonDuplicateRecords.length === 0) {
+          fs.unlinkSync(filePath);
+          return res.status(409).json({
+            error: "All Records are Duplicates. No New Records Were Added.",
+          });
+        }
+
+        if (nonDuplicateRecords.length > 0) {
+          await budgetDistributionCollection.insertMany(nonDuplicateRecords);
+          return res.status(200).json({
+            message:
+              duplicateCount > 0
+                ? `Successfully Added ${nonDuplicateRecords.length} Rows. Skipped ${duplicateCount} Duplicate Rows.`
+                : "CSV File Imported Successfully into Database",
+            inserted: nonDuplicateRecords.length,
+            duplicates: duplicateCount,
+          });
+        }
+      } catch (err) {
+        console.error("Error processing CSV:", err);
+        res.status(500).json({ error: "Failed to Process CSV File" });
+      } finally {
+        // Clean up the uploaded file
+        fs.unlinkSync(filePath);
+      }
+    });
+
+    // Expense Management for Users
+    app.get("/expenses/:uid", async (req, res) => {
+      const uid = req.params.uid;
+      const expenses = await budgetDistributionCollection
+        .find({ userId: uid })
+        .toArray();
+      res.send(expenses);
+    });
+
 
       if (upazila) {
         // If upazila already exists, add the new allocations to the existing allocations
