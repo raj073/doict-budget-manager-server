@@ -230,45 +230,6 @@ async function run() {
     });
 
     // Endpoint to distribute budget data for each upazila
-    // app.post("/upazilaCodewiseBudget", async (req, res) => {
-    //   const { upazilaId, upazilaName, allocations } = req.body;
-
-    //   try {
-    //     // Find or create upazila entry
-    //     const upazila = await upazilaCodewiseBudgetCollection.findOne({
-    //       upazilaId,
-    //     });
-
-    //     if (upazila) {
-    //       // Update existing upazila distribution
-    //       const updatedAllocations = upazila.allocations.concat(allocations);
-    //       await upazilaCodewiseBudgetCollection.updateOne(
-    //         { upazilaId },
-    //         { $set: { allocations: updatedAllocations } }
-    //       );
-    //       res.status(200).send({ message: "Budget updated successfully" });
-    //     } else {
-    //       // Create new upazila distribution
-    //       const distributionData = {
-    //         upazilaId,
-    //         upazilaName,
-    //         allocations,
-    //         createdAt: new Date(),
-    //       };
-    //       const result = await upazilaCodewiseBudgetCollection.insertOne(
-    //         distributionData
-    //       );
-    //       res
-    //         .status(201)
-    //         .send({ message: "Budget distributed successfully", result });
-    //     }
-    //   } catch (error) {
-    //     console.error("Error distributing budget:", error);
-    //     res
-    //       .status(500)
-    //       .send({ error: "Failed to distribute budget. Please try again." });
-    //   }
-    // });
 
     app.post("/upazilaCodewiseBudget", async (req, res) => {
       const { upazilaId, upazilaName, ...allocations } = req.body;
