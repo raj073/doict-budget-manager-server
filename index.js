@@ -388,7 +388,7 @@ async function run() {
       res.send(message);
     });
 
-    // Test Connection
+    // Test DB Connection
     // await client.db("admin").command({ ping: 1 });
     // console.log("DBMS System Connected to MongoDB.");
   } finally {
