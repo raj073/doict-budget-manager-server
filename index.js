@@ -11,14 +11,15 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://doict-budget-manager-client.vercel.app",
-    ],
-  })
-);
+// app.use(
+//   cors({
+//     origin: [
+//       "http://localhost:5173",
+//       "https://doict-budget-manager-7c9f1.web.app/",
+//     ],
+//   })
+// );
+app.use(cors());
 app.use(express.json());
 
 // Multer Excel Upload Middleware
@@ -54,7 +55,7 @@ const client = new MongoClient(uri, {
 // Function to run the server and database connection
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
 
     // Database Collections
     const db = client.db("budget-manager");
@@ -388,8 +389,8 @@ async function run() {
     });
 
     // Test Connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("DBMS System Connected to MongoDB.");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("DBMS System Connected to MongoDB.");
   } finally {
     // Keep connection open
   }
