@@ -233,79 +233,51 @@ async function run() {
     // Endpoint to distribute budget data for each upazila
 
     app.post("/upazilaCodewiseBudget", async (req, res) => {
-      const { upazilaId, upazilaName, ...allocations } = req.body;
-      console.log("Request Body:", req.body);
+      const { upazilaId, upazilaName, allocations } = req.body;
 
-      // Convert allocations from object format to an array of { economicCode, amount }
-      const allocationsArray = Object.keys(allocations).map((economicCode) => ({
-        economicCode,
-        amount: allocations[economicCode],
-      }));
-
-      // Validate the data
-      if (!upazilaId || !allocationsArray || allocationsArray.length === 0) {
+      if (
+        !upazilaId ||
+        !upazilaName ||
+        !allocations ||
+        allocations.length === 0
+      ) {
         return res.status(400).send({ error: "Invalid or missing data." });
       }
 
       try {
-        // Log the bulk operations
         const bulkOperations = [];
-        const additionalUpdates = [];
 
-        allocationsArray.forEach(({ economicCode, amount }) => {
-          const updateOperation = {
+        allocations.forEach(({ economicCode, amount }) => {
+          bulkOperations.push({
             updateOne: {
               filter: { upazilaId, "allocations.economicCode": economicCode },
-              update: {
-                $inc: { "allocations.$.amount": amount }, // Increment existing amount
-              },
-              upsert: false, // Do not create new document for existing economicCode
+              update: { $inc: { "allocations.$.amount": amount } },
+              upsert: false, // Prevents creating a new document if no match is found
             },
-          };
-
-          bulkOperations.push(updateOperation);
+          });
         });
 
-        console.log("Bulk Operations:", bulkOperations);
-
-        // Execute bulk write
         const result = await upazilaCodewiseBudgetCollection.bulkWrite(
           bulkOperations
         );
-        console.log("Bulk Write Result:", result);
 
-        // Check which economic codes were not updated and need to be added
-        allocationsArray.forEach(({ economicCode, amount }) => {
-          const isUpdated = result.matchedCount > 0;
-          if (!isUpdated) {
-            additionalUpdates.push({ economicCode, amount });
-          }
-        });
+        // Handle upserts for new allocations
+        const unmatchedAllocations = allocations.filter(
+          ({ economicCode }) =>
+            !result.upsertedCount &&
+            !result.matchedCount &&
+            !result.modifiedCount
+        );
 
-        // Insert new economic codes if needed
-        if (additionalUpdates.length > 0) {
-          // If no document exists, create a new document with the allocations
-          const existingUpazila = await upazilaCodewiseBudgetCollection.findOne(
-            { upazilaId }
+        if (unmatchedAllocations.length > 0) {
+          await upazilaCodewiseBudgetCollection.updateOne(
+            { upazilaId },
+            {
+              $setOnInsert: { upazilaId, upazilaName },
+              $push: { allocations: { $each: unmatchedAllocations } },
+            },
+            { upsert: true }
           );
-          if (!existingUpazila) {
-            // Create new document with allocations
-            await upazilaCodewiseBudgetCollection.insertOne({
-              upazilaId,
-              upazilaName,
-              allocations: additionalUpdates,
-            });
-          } else {
-            // Otherwise, update the document with the new economic codes
-            await Promise.all(
-              additionalUpdates.map(({ economicCode, amount }) =>
-                upazilaCodewiseBudgetCollection.updateOne(
-                  { upazilaId },
-                  { $push: { allocations: { economicCode, amount } } }
-                )
-              )
-            );
-          }
         }
 
         res.send({ message: "Budget distributed successfully!" });
@@ -371,7 +343,7 @@ async function run() {
 
     // Test DB Connection
     // await client.db("admin").command({ ping: 1 });
-    // console.log("DBMS System Connected to MongoDB.");
+    console.log("DBMS System Connected to MongoDB.");
   } finally {
     // Keep connection open
   }
