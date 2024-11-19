@@ -69,6 +69,9 @@ async function run() {
       "upazilaCodewiseBudget"
     );
     const upazilaBudgetDemandCollection = db.collection("upazilaBudgetDemand");
+    const upazilaBudgetExpenseCollection = db.collection(
+      "upazilaBudgetExpense"
+    );
 
     // Routes for User Management
     app.get("/users", async (req, res) => {
@@ -365,6 +368,31 @@ async function run() {
         res
           .status(500)
           .send({ success: false, message: "Failed to save demand data" });
+      }
+    });
+
+    // User Upazila Codewise Budget Expense
+    app.get("/upazilaBudgetExpense", async (req, res) => {
+      const users = await upazilaBudgetExpenseCollection.find().toArray();
+      res.send(users);
+    });
+    app.post("/upazilaBudgetExpense", async (req, res) => {
+      const expenseData = req.body;
+
+      try {
+        const result = await upazilaBudgetExpenseCollection.insertOne(
+          expenseData
+        );
+        res.status(201).send({
+          success: true,
+          message: "Expense data saved successfully",
+          result,
+        });
+      } catch (error) {
+        console.error("Error saving expense data:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to save expense data" });
       }
     });
 
