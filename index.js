@@ -372,27 +372,81 @@ async function run() {
     });
 
     // User Upazila Codewise Budget Expense
-    app.get("/upazilaBudgetExpense", async (req, res) => {
-      const users = await upazilaBudgetExpenseCollection.find().toArray();
-      res.send(users);
-    });
-    app.post("/upazilaBudgetExpense", async (req, res) => {
-      const expenseData = req.body;
 
+    app.get("/upazilaBudgetExpense", async (req, res) => {
       try {
-        const result = await upazilaBudgetExpenseCollection.insertOne(
-          expenseData
-        );
-        res.status(201).send({
-          success: true,
-          message: "Expense data saved successfully",
-          result,
-        });
+        const users = await upazilaBudgetExpenseCollection.find().toArray();
+        res.send(users);
       } catch (error) {
-        console.error("Error saving expense data:", error);
+        console.error("Error fetching expense data:", error);
         res
           .status(500)
-          .send({ success: false, message: "Failed to save expense data" });
+          .send({ success: false, message: "Failed to fetch data" });
+      }
+    });
+
+    app.post("/upazilaBudgetExpense", async (req, res) => {
+      const expenseData = req.body;
+      const { upazilaCode, expenseCollections } = expenseData;
+
+      try {
+        // Check if the upazila already exists in the collection
+        const existingExpenseData =
+          await upazilaBudgetExpenseCollection.findOne({ upazilaCode });
+
+        if (existingExpenseData) {
+          // If upazila exists, update its expense data
+          const updatedExpenseCollections =
+            existingExpenseData.expenseCollections.map((existingItem) => {
+              const newItem = expenseCollections.find(
+                (item) => item.economicCode === existingItem.economicCode
+              );
+              if (newItem) {
+                return {
+                  ...existingItem,
+                  expenseBudget:
+                    existingItem.expenseBudget + newItem.expenseBudget,
+                };
+              }
+              return existingItem;
+            });
+
+          // If some new codes are not present in the existing data, add them
+          const newItems = expenseCollections.filter(
+            (newItem) =>
+              !existingExpenseData.expenseCollections.some(
+                (existingItem) =>
+                  existingItem.economicCode === newItem.economicCode
+              )
+          );
+
+          const updatedExpenseData = {
+            ...existingExpenseData,
+            expenseCollections: [...updatedExpenseCollections, ...newItems],
+          };
+
+          await upazilaBudgetExpenseCollection.updateOne(
+            { upazilaCode },
+            { $set: updatedExpenseData }
+          );
+          res.status(200).send({
+            success: true,
+            message: "Expense data updated successfully",
+          });
+        } else {
+          // If upazila doesn't exist, insert the new expense data
+          await upazilaBudgetExpenseCollection.insertOne(expenseData);
+          res.status(201).send({
+            success: true,
+            message: "Expense data saved successfully",
+          });
+        }
+      } catch (error) {
+        console.error("Error saving or updating expense data:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to save or update expense data",
+        });
       }
     });
 
