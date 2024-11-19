@@ -68,6 +68,7 @@ async function run() {
     const upazilaCodewiseBudgetCollection = db.collection(
       "upazilaCodewiseBudget"
     );
+    const upazilaBudgetDemandCollection = db.collection("upazilaBudgetDemand");
 
     // Routes for User Management
     app.get("/users", async (req, res) => {
@@ -339,6 +340,32 @@ async function run() {
         _id: new ObjectId(id),
       });
       res.send(message);
+    });
+
+    // Upazila Budget Demand
+
+    app.get("/upazilaBudgetDemand", async (req, res) => {
+      const users = await upazilaBudgetDemandCollection.find().toArray();
+      res.send(users);
+    });
+    app.post("/upazilaBudgetDemand", async (req, res) => {
+      const demandData = req.body;
+
+      try {
+        const result = await upazilaBudgetDemandCollection.insertOne(
+          demandData
+        );
+        res.status(201).send({
+          success: true,
+          message: "Demand data saved successfully",
+          result,
+        });
+      } catch (error) {
+        console.error("Error saving demand data:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to save demand data" });
+      }
     });
 
     // Test DB Connection
