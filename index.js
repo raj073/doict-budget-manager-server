@@ -11,14 +11,15 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://doict-budget-manager-client.vercel.app",
-    ],
-  })
-);
+// app.use(
+//   cors({
+//     origin: [
+//       "http://localhost:5173",
+//       "https://doict-budget-manager-7c9f1.web.app/",
+//     ],
+//   })
+// );
+app.use(cors());
 app.use(express.json());
 
 // Multer Excel Upload Middleware
@@ -54,7 +55,7 @@ const client = new MongoClient(uri, {
 // Function to run the server and database connection
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
 
     // Database Collections
     const db = client.db("budget-manager");
@@ -201,106 +202,9 @@ async function run() {
         { $inc: { distributedBudget } }
       );
 
-
-      // Now update the upazilaCodewiseBudget collection
-      const upazila = await upazilaCodewiseBudgetCollection.findOne({
-        upazilaId,
-      });
-
       // Insert distribution record
       const result = await budgetDistributionCollection.insertOne(req.body);
       res.send(result);
-    });
-
-    // Budget Distribution Upload Excel File
-    app.post("/uploadExcel", upload.single("csvFile"), async (req, res) => {
-      const filePath = req.file.path;
-      const expectedHeaders = [
-        "SL",
-        "SerialCode",
-        "OfficeName",
-        "EntertainmentExpenses",
-        "Internet",
-      ];
-      try {
-        // Convert CSV to JSON using csvtojson
-        const jsonArray = await csv().fromFile(filePath);
-        console.log(jsonArray);
-
-        // Validate CSV headers
-        const csvHeaders = Object.keys(jsonArray[0]);
-        const isValidHeaders = expectedHeaders.every((header) =>
-          csvHeaders.includes(header)
-        );
-
-        if (!isValidHeaders) {
-          // Delete the uploaded file if headers are invalid
-          if (fs.existsSync(filePath)) {
-            fs.unlink(filePath, (err) => {
-              if (err) {
-                console.error("Error deleting file:", err);
-              }
-            });
-          }
-          return res.status(400).json({
-            error:
-              "Invalid CSV file detected. Headers do not match. Please check and re-upload.",
-          });
-        }
-
-        // Check for duplicates in the database
-        const serialCodes = jsonArray.map((sl) => sl.SerialCode);
-        console.log("SerialCode After Map:", serialCodes);
-        const existingRecords = await budgetDistributionCollection
-          .find({
-            SerialCode: { $in: serialCodes },
-          })
-          .toArray();
-        console.log("Existing Records:", existingRecords);
-
-        const existingSerialCodes = new Set(
-          existingRecords.map((record) => record.SerialCode)
-        );
-        console.log("Existing Serial Codes:", existingSerialCodes);
-
-        // //Filter out duplicates
-        const nonDuplicateRecords = jsonArray.filter(
-          (record) => !existingSerialCodes.has(record.SerialCode)
-        );
-
-        console.log(
-          "Non Duplicate Records length:",
-          nonDuplicateRecords.length
-        );
-
-        const duplicateCount = jsonArray.length - nonDuplicateRecords.length;
-        console.log("Duplicate Count:", duplicateCount);
-
-        if (nonDuplicateRecords.length === 0) {
-          fs.unlinkSync(filePath);
-          return res.status(409).json({
-            error: "All Records are Duplicates. No New Records Were Added.",
-          });
-        }
-
-        if (nonDuplicateRecords.length > 0) {
-          await budgetDistributionCollection.insertMany(nonDuplicateRecords);
-          return res.status(200).json({
-            message:
-              duplicateCount > 0
-                ? `Successfully Added ${nonDuplicateRecords.length} Rows. Skipped ${duplicateCount} Duplicate Rows.`
-                : "CSV File Imported Successfully into Database",
-            inserted: nonDuplicateRecords.length,
-            duplicates: duplicateCount,
-          });
-        }
-      } catch (err) {
-        console.error("Error processing CSV:", err);
-        res.status(500).json({ error: "Failed to Process CSV File" });
-      } finally {
-        // Clean up the uploaded file
-        fs.unlinkSync(filePath);
-      }
     });
 
     // Expense Management for Users
@@ -312,52 +216,12 @@ async function run() {
       res.send(expenses);
     });
 
+    app.post("/expenses", async (req, res) => {
+      const { uid, economicCode, expenseAmount } = req.body;
 
-      if (upazila) {
-        // If upazila already exists, add the new allocations to the existing allocations
-        const updatedAllocations = upazila.allocations.map((allocation) => {
-          if (allocation.economicCode === economicCode) {
-            allocation.distributed += distributedBudget; // Update the distributed amount
-          }
-          return allocation;
-        });
-
-        // If economicCode does not exist in allocations, add a new entry for it
-        if (
-          !upazila.allocations.some(
-            (allocation) => allocation.economicCode === economicCode
-          )
-        ) {
-          updatedAllocations.push({
-            economicCode,
-            distributed: distributedBudget,
-          });
-        }
-
-        // Update the upazilaCodewiseBudget collection with the updated allocations
-        await upazilaCodewiseBudgetCollection.updateOne(
-          { upazilaId },
-          { $set: { allocations: updatedAllocations } }
-        );
-      } else {
-        // If upazila does not exist, create a new entry for it
-        const newUpazilaData = {
-          upazilaId,
-          upazilaName: req.body.upazilaName, // Ensure this data is coming from the request body
-          allocations: [
-            {
-              economicCode,
-              distributed: distributedBudget,
-            },
-          ],
-          createdAt: new Date(),
-        };
-
-        await upazilaCodewiseBudgetCollection.insertOne(newUpazilaData);
-      }
-
-      // Respond with success message and updated budget information
-      const updatedEconomicCode = await economicCodesCollection.findOne({
+      // Find User's Budget Distribution
+      const distribution = await budgetDistributionCollection.findOne({
+        userId: uid,
         economicCode,
       });
       res.send({
@@ -367,43 +231,59 @@ async function run() {
     });
 
     // Endpoint to distribute budget data for each upazila
+
     app.post("/upazilaCodewiseBudget", async (req, res) => {
       const { upazilaId, upazilaName, allocations } = req.body;
 
+      if (
+        !upazilaId ||
+        !upazilaName ||
+        !allocations ||
+        allocations.length === 0
+      ) {
+        return res.status(400).send({ error: "Invalid or missing data." });
+      }
+
       try {
-        // Find or create upazila entry
-        const upazila = await upazilaCodewiseBudgetCollection.findOne({
-          upazilaId,
+        const bulkOperations = [];
+
+        allocations.forEach(({ economicCode, amount }) => {
+          bulkOperations.push({
+            updateOne: {
+              filter: { upazilaId, "allocations.economicCode": economicCode },
+              update: { $inc: { "allocations.$.amount": amount } },
+              upsert: false, // Prevents creating a new document if no match is found
+            },
+          });
         });
 
-        if (upazila) {
-          // Update existing upazila distribution
-          const updatedAllocations = upazila.allocations.concat(allocations);
+        const result = await upazilaCodewiseBudgetCollection.bulkWrite(
+          bulkOperations
+        );
+
+        // Handle upserts for new allocations
+        const unmatchedAllocations = allocations.filter(
+          ({ economicCode }) =>
+            !result.upsertedCount &&
+            !result.matchedCount &&
+            !result.modifiedCount
+        );
+
+        if (unmatchedAllocations.length > 0) {
           await upazilaCodewiseBudgetCollection.updateOne(
             { upazilaId },
-            { $set: { allocations: updatedAllocations } }
+            {
+              $setOnInsert: { upazilaId, upazilaName },
+              $push: { allocations: { $each: unmatchedAllocations } },
+            },
+            { upsert: true }
           );
-          res.status(200).send({ message: "Budget updated successfully" });
-        } else {
-          // Create new upazila distribution
-          const distributionData = {
-            upazilaId,
-            upazilaName,
-            allocations,
-            createdAt: new Date(),
-          };
-          const result = await upazilaCodewiseBudgetCollection.insertOne(
-            distributionData
-          );
-          res
-            .status(201)
-            .send({ message: "Budget distributed successfully", result });
         }
+
+        res.send({ message: "Budget distributed successfully!" });
       } catch (error) {
         console.error("Error distributing budget:", error);
-        res
-          .status(500)
-          .send({ error: "Failed to distribute budget. Please try again." });
+        res.status(500).send({ error: "Failed to distribute budget." });
       }
     });
 
@@ -461,8 +341,8 @@ async function run() {
       res.send(message);
     });
 
-    // Test Connection
-    await client.db("admin").command({ ping: 1 });
+    // Test DB Connection
+    // await client.db("admin").command({ ping: 1 });
     console.log("DBMS System Connected to MongoDB.");
   } finally {
     // Keep connection open
