@@ -2,5 +2,5 @@
 
 ## Important Links
 
-- **Live URL**: [Link]()
+- **Live URL**: [Link](https://doict-budget-manager-server-two.vercel.app/)
 - **Frontend client code link**: [github repo](https://github.com/raj073/doict-budget-manager-client)
