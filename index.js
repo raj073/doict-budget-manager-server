@@ -239,6 +239,7 @@ async function run() {
     app.post("/upazilaCodewiseBudget", async (req, res) => {
       const { upazilaId, upazilaName, allocations } = req.body;
 
+      // Validate input
       if (
         !upazilaId ||
         !upazilaName ||
@@ -248,43 +249,68 @@ async function run() {
         return res.status(400).send({ error: "Invalid or missing data." });
       }
 
-      try {
-        const bulkOperations = [];
+      console.log("Allocations Data:", allocations); // Debugging line to log incoming data
 
-        allocations.forEach(({ economicCode, amount }) => {
-          bulkOperations.push({
-            updateOne: {
-              filter: { upazilaId, "allocations.economicCode": economicCode },
-              update: { $inc: { "allocations.$.amount": amount } },
-              upsert: false, // Prevents creating a new document if no match is found
-            },
-          });
+      try {
+        // Step 1: Check if upazila already exists
+        const existingUpazila = await upazilaCodewiseBudgetCollection.findOne({
+          upazilaId,
         });
 
-        const result = await upazilaCodewiseBudgetCollection.bulkWrite(
-          bulkOperations
-        );
+        if (!existingUpazila) {
+          // If upazila does not exist, create a new document
+          await upazilaCodewiseBudgetCollection.insertOne({
+            upazilaId,
+            upazilaName,
+            allocations,
+          });
+          return res.send({
+            message: "Upazila and allocations added successfully!",
+          });
+        } else {
+          // Step 2: Ensure allocations is always an array
+          const allocationsArray = existingUpazila.allocations || [];
 
-        // Handle upserts for new allocations
-        const unmatchedAllocations = allocations.filter(
-          ({ economicCode }) =>
-            !result.upsertedCount &&
-            !result.matchedCount &&
-            !result.modifiedCount
-        );
+          const bulkOperations = [];
 
-        if (unmatchedAllocations.length > 0) {
-          await upazilaCodewiseBudgetCollection.updateOne(
-            { upazilaId },
-            {
-              $setOnInsert: { upazilaId, upazilaName },
-              $push: { allocations: { $each: unmatchedAllocations } },
-            },
-            { upsert: true }
+          allocations.forEach(({ economicCode, amount }) => {
+            bulkOperations.push({
+              updateOne: {
+                filter: { upazilaId, "allocations.economicCode": economicCode },
+                update: {
+                  $inc: { "allocations.$.amount": amount }, // Increment amount if economicCode exists
+                },
+                upsert: false, // Do not insert if no match is found
+              },
+            });
+          });
+
+          // Perform bulk operations to update existing allocations
+          const result = await upazilaCodewiseBudgetCollection.bulkWrite(
+            bulkOperations
           );
-        }
 
-        res.send({ message: "Budget distributed successfully!" });
+          // Step 3: Handle new allocations (economic codes that do not exist)
+          const unmatchedAllocations = allocations.filter(
+            ({ economicCode }) => {
+              return !allocationsArray.some(
+                (allocation) => allocation.economicCode === economicCode
+              );
+            }
+          );
+
+          if (unmatchedAllocations.length > 0) {
+            // Push new allocations for unmatched economic codes
+            await upazilaCodewiseBudgetCollection.updateOne(
+              { upazilaId },
+              {
+                $push: { allocations: { $each: unmatchedAllocations } },
+              }
+            );
+          }
+
+          res.send({ message: "Budget data updated successfully!" });
+        }
       } catch (error) {
         console.error("Error distributing budget:", error);
         res.status(500).send({ error: "Failed to distribute budget." });
