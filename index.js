@@ -11,15 +11,15 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
-// app.use(
-//   cors({
-//     origin: [
-//       "http://localhost:5173",
-//       "https://doict-budget-manager-7c9f1.web.app/",
-//     ],
-//   })
-// );
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://doict-budget-manager-7c9f1.web.app",
+    ],
+  })
+);
+// app.use(cors());
 app.use(express.json());
 
 // Multer Excel Upload Middleware
@@ -96,7 +96,7 @@ async function run() {
     app.put("/user/:id", async (req, res) => {
       const id = req.params.id;
       const user = req.body;
-      const filter = { _id: new ObjectId(id) };
+      const filter = { uid: id };
       const updatedUser = { $set: { ...user } };
       const result = await userCollection.updateOne(filter, updatedUser, {
         upsert: true,
