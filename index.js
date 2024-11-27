@@ -11,15 +11,15 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 // Middleware
-// app.use(
-//   cors({
-//     origin: [
-//       "http://localhost:5173",
-//       "https://doict-budget-manager-7c9f1.web.app/",
-//     ],
-//   })
-// );
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://doict-budget-manager-7c9f1.web.app",
+    ],
+  })
+);
+// app.use(cors());
 app.use(express.json());
 
 // Multer Excel Upload Middleware
@@ -68,6 +68,10 @@ async function run() {
     const upazilaCodewiseBudgetCollection = db.collection(
       "upazilaCodewiseBudget"
     );
+    const upazilaBudgetDemandCollection = db.collection("upazilaBudgetDemand");
+    const upazilaBudgetExpenseCollection = db.collection(
+      "upazilaBudgetExpense"
+    );
 
     // Routes for User Management
     app.get("/users", async (req, res) => {
@@ -92,7 +96,7 @@ async function run() {
     app.put("/user/:id", async (req, res) => {
       const id = req.params.id;
       const user = req.body;
-      const filter = { _id: new ObjectId(id) };
+      const filter = { uid: id };
       const updatedUser = { $set: { ...user } };
       const result = await userCollection.updateOne(filter, updatedUser, {
         upsert: true,
@@ -235,6 +239,7 @@ async function run() {
     app.post("/upazilaCodewiseBudget", async (req, res) => {
       const { upazilaId, upazilaName, allocations } = req.body;
 
+      // Validate input
       if (
         !upazilaId ||
         !upazilaName ||
@@ -244,43 +249,68 @@ async function run() {
         return res.status(400).send({ error: "Invalid or missing data." });
       }
 
-      try {
-        const bulkOperations = [];
+      console.log("Allocations Data:", allocations); // Debugging line to log incoming data
 
-        allocations.forEach(({ economicCode, amount }) => {
-          bulkOperations.push({
-            updateOne: {
-              filter: { upazilaId, "allocations.economicCode": economicCode },
-              update: { $inc: { "allocations.$.amount": amount } },
-              upsert: false, // Prevents creating a new document if no match is found
-            },
-          });
+      try {
+        // Step 1: Check if upazila already exists
+        const existingUpazila = await upazilaCodewiseBudgetCollection.findOne({
+          upazilaId,
         });
 
-        const result = await upazilaCodewiseBudgetCollection.bulkWrite(
-          bulkOperations
-        );
+        if (!existingUpazila) {
+          // If upazila does not exist, create a new document
+          await upazilaCodewiseBudgetCollection.insertOne({
+            upazilaId,
+            upazilaName,
+            allocations,
+          });
+          return res.send({
+            message: "Upazila and allocations added successfully!",
+          });
+        } else {
+          // Step 2: Ensure allocations is always an array
+          const allocationsArray = existingUpazila.allocations || [];
 
-        // Handle upserts for new allocations
-        const unmatchedAllocations = allocations.filter(
-          ({ economicCode }) =>
-            !result.upsertedCount &&
-            !result.matchedCount &&
-            !result.modifiedCount
-        );
+          const bulkOperations = [];
 
-        if (unmatchedAllocations.length > 0) {
-          await upazilaCodewiseBudgetCollection.updateOne(
-            { upazilaId },
-            {
-              $setOnInsert: { upazilaId, upazilaName },
-              $push: { allocations: { $each: unmatchedAllocations } },
-            },
-            { upsert: true }
+          allocations.forEach(({ economicCode, amount }) => {
+            bulkOperations.push({
+              updateOne: {
+                filter: { upazilaId, "allocations.economicCode": economicCode },
+                update: {
+                  $inc: { "allocations.$.amount": amount }, // Increment amount if economicCode exists
+                },
+                upsert: false, // Do not insert if no match is found
+              },
+            });
+          });
+
+          // Perform bulk operations to update existing allocations
+          const result = await upazilaCodewiseBudgetCollection.bulkWrite(
+            bulkOperations
           );
-        }
 
-        res.send({ message: "Budget distributed successfully!" });
+          // Step 3: Handle new allocations (economic codes that do not exist)
+          const unmatchedAllocations = allocations.filter(
+            ({ economicCode }) => {
+              return !allocationsArray.some(
+                (allocation) => allocation.economicCode === economicCode
+              );
+            }
+          );
+
+          if (unmatchedAllocations.length > 0) {
+            // Push new allocations for unmatched economic codes
+            await upazilaCodewiseBudgetCollection.updateOne(
+              { upazilaId },
+              {
+                $push: { allocations: { $each: unmatchedAllocations } },
+              }
+            );
+          }
+
+          res.send({ message: "Budget data updated successfully!" });
+        }
       } catch (error) {
         console.error("Error distributing budget:", error);
         res.status(500).send({ error: "Failed to distribute budget." });
@@ -339,6 +369,111 @@ async function run() {
         _id: new ObjectId(id),
       });
       res.send(message);
+    });
+
+    // Upazila Budget Demand
+
+    app.get("/upazilaBudgetDemand", async (req, res) => {
+      const users = await upazilaBudgetDemandCollection.find().toArray();
+      res.send(users);
+    });
+    app.post("/upazilaBudgetDemand", async (req, res) => {
+      const demandData = req.body;
+
+      try {
+        const result = await upazilaBudgetDemandCollection.insertOne(
+          demandData
+        );
+        res.status(201).send({
+          success: true,
+          message: "Demand data saved successfully",
+          result,
+        });
+      } catch (error) {
+        console.error("Error saving demand data:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to save demand data" });
+      }
+    });
+
+    // User Upazila Codewise Budget Expense
+
+    app.get("/upazilaBudgetExpense", async (req, res) => {
+      try {
+        const users = await upazilaBudgetExpenseCollection.find().toArray();
+        res.send(users);
+      } catch (error) {
+        console.error("Error fetching expense data:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch data" });
+      }
+    });
+
+    app.post("/upazilaBudgetExpense", async (req, res) => {
+      const expenseData = req.body;
+      const { upazilaCode, expenseCollections } = expenseData;
+
+      try {
+        // Check if the upazila already exists in the collection
+        const existingExpenseData =
+          await upazilaBudgetExpenseCollection.findOne({ upazilaCode });
+
+        if (existingExpenseData) {
+          // If upazila exists, update its expense data
+          const updatedExpenseCollections =
+            existingExpenseData.expenseCollections.map((existingItem) => {
+              const newItem = expenseCollections.find(
+                (item) => item.economicCode === existingItem.economicCode
+              );
+              if (newItem) {
+                return {
+                  ...existingItem,
+                  expenseBudget:
+                    existingItem.expenseBudget + newItem.expenseBudget,
+                };
+              }
+              return existingItem;
+            });
+
+          // If some new codes are not present in the existing data, add them
+          const newItems = expenseCollections.filter(
+            (newItem) =>
+              !existingExpenseData.expenseCollections.some(
+                (existingItem) =>
+                  existingItem.economicCode === newItem.economicCode
+              )
+          );
+
+          const updatedExpenseData = {
+            ...existingExpenseData,
+            expenseCollections: [...updatedExpenseCollections, ...newItems],
+          };
+
+          await upazilaBudgetExpenseCollection.updateOne(
+            { upazilaCode },
+            { $set: updatedExpenseData }
+          );
+          res.status(200).send({
+            success: true,
+            message: "Expense data updated successfully",
+          });
+        } else {
+          // If upazila doesn't exist, insert the new expense data
+          await upazilaBudgetExpenseCollection.insertOne(expenseData);
+          res.status(201).send({
+            success: true,
+            message: "Expense data saved successfully",
+          });
+        }
+      } catch (error) {
+        console.error("Error saving or updating expense data:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to save or update expense data",
+        });
+      }
     });
 
     // Test DB Connection
