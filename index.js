@@ -112,6 +112,54 @@ async function run() {
       res.send(result);
     });
 
+    // Block/Unblock User
+    app.put("/user/block-unblock/:id", async (req, res) => {
+      const id = req.params.id;
+      const { action } = req.body; // action is "block" or "unblock"
+
+      if (action !== "block" && action !== "unblock") {
+        return res
+          .status(400)
+          .send({ error: "Invalid action. Use 'block' or 'unblock'." });
+      }
+
+      const filter = { _id: new ObjectId(id) };
+      const update = { $set: { isBlocked: action === "block" } }; // Update block status
+
+      const result = await userCollection.updateOne(filter, update);
+      if (result.modifiedCount === 0) {
+        return res.status(404).send({ error: "User not found." });
+      }
+
+      res.send({ message: `User successfully ${action}ed.` });
+    });
+
+    // Toggle Admin Status
+    app.put("/user/toggle-admin/:id", async (req, res) => {
+      const id = req.params.id;
+      const { action } = req.body; // action is "makeAdmin" or "removeAdmin"
+
+      if (action !== "makeAdmin" && action !== "removeAdmin") {
+        return res
+          .status(400)
+          .send({ error: "Invalid action. Use 'makeAdmin' or 'removeAdmin'." });
+      }
+
+      const filter = { _id: new ObjectId(id) };
+      const update = { $set: { isAdmin: action === "makeAdmin" } }; // Toggle admin status
+
+      const result = await userCollection.updateOne(filter, update);
+      if (result.modifiedCount === 0) {
+        return res.status(404).send({ error: "User not found." });
+      }
+
+      res.send({
+        message: `User successfully ${
+          action === "makeAdmin" ? "made an admin" : "removed from admin"
+        }.`,
+      });
+    });
+
     // Upazila Management
     app.get("/upazila", async (req, res) => {
       const upazilaInfo = await upazilaCollection
