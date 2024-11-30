@@ -93,19 +93,64 @@ async function run() {
       res.send(result);
     });
 
-    app.put("/user/:id", async (req, res) => {
-      const id = req.params.id;
-      const user = req.body;
-      const filter = { uid: id };
-      const updatedUser = { $set: { ...user } };
-      const result = await userCollection.updateOne(filter, updatedUser, {
-        upsert: true,
-      });
-      res.send(result);
+    // Update user profile - Partial Update (PATCH)
+    app.patch("/user/:id", async (req, res) => {
+      try {
+        const id = req.params.id; // Extract user ID from the route
+        const updatedFields = req.body; // Get updated fields from the request body
+
+        if (!updatedFields || Object.keys(updatedFields).length === 0) {
+          return res.status(400).send("No fields to update provided");
+        }
+
+        // Ensure the UID is used as the unique identifier
+        const filter = { uid: id };
+
+        // Prepare the update operation
+        const updatedData = {
+          $set: updatedFields,
+        };
+
+        const result = await userCollection.updateOne(filter, updatedData);
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send("User not found");
+        }
+
+        res.status(200).send("User updated successfully");
+      } catch (error) {
+        console.error("Error updating user:", error);
+        res.status(500).send("Server error updating user information");
+      }
     });
 
     app.delete("/user/:id", async (req, res) => {
       const id = req.params.id;
+      app.patch("/user/:id", async (req, res) => {
+        try {
+          const id = req.params.id;
+          const updatedFields = req.body;
+
+          if (!updatedFields || Object.keys(updatedFields).length === 0) {
+            return res.status(400).send("No fields to update provided");
+          }
+
+          const filter = { uid: id };
+          const updatedData = { $set: updatedFields };
+
+          const result = await userCollection.updateOne(filter, updatedData);
+
+          if (result.matchedCount === 0) {
+            return res.status(404).send("User not found");
+          }
+
+          res.status(200).send("User updated successfully");
+        } catch (error) {
+          console.error("Error updating user:", error);
+          res.status(500).send("Server error updating user information");
+        }
+      });
+
       const result = await userCollection.deleteOne({
         _id: new ObjectId(id),
       });
