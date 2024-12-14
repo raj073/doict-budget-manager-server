@@ -226,29 +226,43 @@ async function run() {
       res.send(codes);
     });
 
+    
+    // Economic codes wise budget distribution
     app.post("/economicCodes", async (req, res) => {
-      const { economicCode, distributedAmount } = req.body;
+      const { allocations } = req.body; // Expects an array of { economicCode, amount } objects.
 
-      if (!economicCode || !distributedAmount) {
-        return res
-          .status(400)
-          .send({ error: "Economic code and distributed amount are required" });
+      if (
+        !allocations ||
+        !Array.isArray(allocations) ||
+        allocations.length === 0
+      ) {
+        return res.status(400).send({
+          error:
+            "Allocations must be a non-empty array of economic codes and amounts",
+        });
       }
 
       try {
-        // Update the economicCodes collection by incrementing the distributed amount
-        const updatedEconomicCode = await economicCodesCollection.updateOne(
-          { economicCode },
-          { $inc: { distributedBudget: distributedAmount } }
-        );
+        const bulkOperations = allocations.map(({ economicCode, amount }) => ({
+          updateOne: {
+            filter: { economicCode },
+            update: { $inc: { distributedBudget: amount } },
+          },
+        }));
 
-        if (updatedEconomicCode.modifiedCount === 0) {
-          return res.status(404).send({ error: "Economic code not found" });
+        const result = await economicCodesCollection.bulkWrite(bulkOperations);
+
+        if (result.matchedCount === 0) {
+          return res
+            .status(404)
+            .send({ error: "No matching economic codes found" });
         }
 
-        res.send({ message: "Economic code updated successfully" });
+        res.send({
+          message: `${result.modifiedCount} economic code(s) updated successfully`,
+        });
       } catch (error) {
-        console.error("Error updating economic code:", error);
+        console.error("Error updating economic codes:", error);
         res.status(500).send({ error: "Internal server error" });
       }
     });
