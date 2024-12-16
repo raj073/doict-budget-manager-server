@@ -226,7 +226,6 @@ async function run() {
       res.send(codes);
     });
 
-    
     // Economic codes wise budget distribution
     app.post("/economicCodes", async (req, res) => {
       const { allocations } = req.body; // Expects an array of { economicCode, amount } objects.
@@ -484,27 +483,62 @@ async function run() {
       const users = await upazilaBudgetDemandCollection.find().toArray();
       res.send(users);
     });
+
     app.post("/upazilaBudgetDemand", async (req, res) => {
       const demandData = req.body;
 
       try {
-        const result = await upazilaBudgetDemandCollection.insertOne(
-          demandData
-        );
-        res.status(201).send({
-          success: true,
-          message: "Demand data saved successfully",
-          result,
+        // Check if an upazila entry exists
+        const existingUpazila = await upazilaBudgetDemandCollection.findOne({
+          upazilaCode: demandData.upazilaCode,
         });
+
+        if (existingUpazila) {
+          // Loop through demand collections to update or add new entries
+          demandData.demandCollections.forEach((newDemand) => {
+            const existingDemand = existingUpazila.demandCollections.find(
+              (item) => item.economicCode === newDemand.economicCode
+            );
+
+            if (existingDemand) {
+              // Increment the amount if the economicCode exists
+              existingDemand.amountDemanded += newDemand.amountDemanded;
+            } else {
+              // Add as a new demand entry if it doesn't exist
+              existingUpazila.demandCollections.push(newDemand);
+            }
+          });
+
+          // Update the upazila data in the collection
+          const result = await upazilaBudgetDemandCollection.updateOne(
+            { upazilaCode: demandData.upazilaCode },
+            { $set: { demandCollections: existingUpazila.demandCollections } }
+          );
+
+          return res.status(200).send({
+            success: true,
+            message: "Demand data updated successfully",
+            result,
+          });
+        } else {
+          // Insert new upazila data if it doesn't exist
+          const result = await upazilaBudgetDemandCollection.insertOne(
+            demandData
+          );
+          return res.status(201).send({
+            success: true,
+            message: "Demand data saved successfully",
+            result,
+          });
+        }
       } catch (error) {
-        console.error("Error saving demand data:", error);
-        res
-          .status(500)
-          .send({ success: false, message: "Failed to save demand data" });
+        console.error("Error saving/updating demand data:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to save or update demand data",
+        });
       }
     });
-
-    // User Upazila Codewise Budget Expense
 
     app.get("/upazilaBudgetExpense", async (req, res) => {
       try {
